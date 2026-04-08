@@ -22,7 +22,7 @@ variable "ami_id" {
 variable "instance_type" {
   description = "EC2 instance size (t3.micro = free tier)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
 }
 
 variable "key_pair_name" {
