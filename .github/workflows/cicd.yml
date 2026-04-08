@@ -138,19 +138,22 @@ jobs:
         env:
           SERVER_IP: ${{ needs.terraform.outputs.server_ip }}
         run: |
-          # Copy the k8s folder to the EC2 server
-          ls -la k8s/   # List files to verify they exist before copying
+          ls -la   # confirm current dir (should show yaml files)
 
-          # SSH in and apply the manifests
           echo "Creating k8s directory on server..."
-
           ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP "mkdir -p ~/k8s"
 
           echo "Copying files..."
+          scp -i ~/.ssh/devops-key.pem *.yaml ubuntu@$SERVER_IP:~/k8s/
 
-          scp -i ~/.ssh/devops-key.pem -r . ubuntu@$SERVER_IP:~/k8s/
+          echo "Verifying files on server..."
+          ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP "ls -la ~/k8s"
+
           ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP << 'ENDSSH'
             echo "Applying Kubernetes manifests..."
+
+            ls -la ~/k8s   # 🔥 confirm again
+
             kubectl apply -f ~/k8s/deployment.yaml
             kubectl apply -f ~/k8s/service.yaml
 
