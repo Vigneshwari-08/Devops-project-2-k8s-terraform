@@ -140,8 +140,8 @@ jobs:
         run: |
           # Copy the k8s folder to the EC2 server
           ls -la k8s/   # List files to verify they exist before copying
-          
-          scp -i ~/.ssh/devops-key.pem -r k8s/ ubuntu@$SERVER_IP:~/k8s/
+
+          scp -i ~/.ssh/devops-key.pem -r .k8s/ ubuntu@$SERVER_IP:~/k8s/
 
           # SSH in and apply the manifests
           ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP << 'ENDSSH'

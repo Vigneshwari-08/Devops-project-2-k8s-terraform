@@ -21,7 +21,7 @@ provider "aws" {
 #   6443  → k3s API server (kubectl talks to this remotely)
 #   30080 → NodePort where Kubernetes exposes our app
 resource "aws_security_group" "devops_sg" {
-  name        = "devops-project2-sg"
+  name        = "devops-project-sg"
   description = "Security group for DevOps Project 2"
 
   ingress {
@@ -65,8 +65,8 @@ resource "aws_security_group" "devops_sg" {
   }
 
   tags = {
-    Name    = "devops-project2-sg"
-    Project = "DevOps-Project2"
+    Name    = "devops-project-sg"
+    Project = "DevOps-Project"
   }
 }
 
@@ -118,7 +118,7 @@ resource "aws_instance" "devops_server" {
   EOF
 
   tags = {
-    Name    = "devops-project2-server"
-    Project = "DevOps-Project2"
+    Name    = "devops-project-server"
+    Project = "DevOps-Project"
   }
 }
