@@ -1,0 +1,171 @@
+# ============================================================
+# cicd.yml — Full CI/CD Pipeline: Docker + Terraform + k8s
+# ============================================================
+# This extends your Project 1 pipeline with two new stages:
+#
+#   Project 1:  Build Docker → Push to DockerHub
+#   Project 2:  + Terraform (provision EC2 + k3s)
+#               + kubectl apply (deploy pods to k3s)
+#
+# Pipeline flow:
+#   1. build-and-push  → builds and pushes Docker image
+#   2. terraform       → provisions EC2, installs k3s, outputs IP
+#   3. deploy          → SSHes into server, runs kubectl apply
+# ============================================================
+
+name: CI/CD Pipeline — Docker + Terraform + Kubernetes
+
+on:
+  push:
+    branches:
+      - main   # Triggers on every push to the main branch
+
+jobs:
+
+  # ── JOB 1: Build Docker image and push to DockerHub ────────
+  # (Same as your Project 1 pipeline)
+  build-and-push:
+    name: Build & Push Docker Image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and push (multi-arch)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/devops-app:latest
+
+  # ── JOB 2: Terraform — Provision EC2 + k3s ─────────────────
+  # Runs AFTER build-and-push succeeds (needs: build-and-push)
+  terraform:
+    name: Terraform Apply
+    runs-on: ubuntu-latest
+    needs: build-and-push   # Wait for Docker image to be ready first
+
+    # These outputs let the next job (deploy) know the server's IP
+    outputs:
+      server_ip: ${{ steps.get_ip.outputs.ip }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false   # Needed for clean output parsing
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Terraform Apply
+        working-directory: terraform
+        run: terraform apply -auto-approve
+        # -auto-approve skips the "yes/no" prompt — safe in CI
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Get EC2 Public IP from Terraform output
+        id: get_ip
+        working-directory: terraform
+        run: |
+          IP=$(terraform output -raw instance_public_ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+          echo "Server IP: $IP"
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+  # ── JOB 3: Deploy — kubectl apply on the EC2 server ────────
+  # SSHes into the EC2, waits for k3s to be ready, then deploys
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: terraform   # Wait for EC2 to be provisioned first
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Write the SSH private key to a file so we can SSH in
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/devops-key.pem
+          chmod 600 ~/.ssh/devops-key.pem
+          # Tell SSH not to ask "are you sure?" for new hosts
+          echo "StrictHostKeyChecking no" >> ~/.ssh/config
+
+      # k3s takes ~60 seconds to fully start after the EC2 boots.
+      # We poll until it's ready before trying to deploy.
+      - name: Wait for k3s to be ready on EC2
+        env:
+          SERVER_IP: ${{ needs.terraform.outputs.server_ip }}
+        run: |
+          echo "Waiting for k3s to be ready on $SERVER_IP..."
+          for i in $(seq 1 20); do
+            STATUS=$(ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP \
+              "kubectl get nodes 2>/dev/null | grep Ready || echo NOT_READY")
+            if echo "$STATUS" | grep -q "Ready"; then
+              echo "k3s is ready!"
+              break
+            fi
+            echo "Attempt $i/20 — k3s not ready yet, waiting 15 seconds..."
+            sleep 15
+          done
+
+      # Copy k8s manifests to the server and apply them
+      - name: Deploy app to k3s
+        env:
+          SERVER_IP: ${{ needs.terraform.outputs.server_ip }}
+        run: |
+          # Copy the k8s folder to the EC2 server
+          scp -i ~/.ssh/devops-key.pem -r k8s/ ubuntu@$SERVER_IP:~/k8s/
+
+          # SSH in and apply the manifests
+          ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP << 'ENDSSH'
+            echo "Applying Kubernetes manifests..."
+            kubectl apply -f ~/k8s/deployment.yaml
+            kubectl apply -f ~/k8s/service.yaml
+
+            echo ""
+            echo "---- Deployment status ----"
+            kubectl rollout status deployment/devops-app --timeout=120s
+
+            echo ""
+            echo "---- Running pods ----"
+            kubectl get pods
+
+            echo ""
+            echo "---- Service ----"
+            kubectl get service devops-app-service
+          ENDSSH
+
+      - name: Print app URL
+        env:
+          SERVER_IP: ${{ needs.terraform.outputs.server_ip }}
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "  App deployed successfully!"
+          echo "  URL: http://$SERVER_IP:30080"
+          echo "=================================================="

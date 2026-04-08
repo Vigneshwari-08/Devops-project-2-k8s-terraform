@@ -1,0 +1,51 @@
+# ============================================================
+# deployment.yaml — Run your app as Kubernetes pods
+# ============================================================
+# A Deployment tells Kubernetes:
+#   "Run 2 copies of my container. If one dies, restart it."
+#
+# Kubernetes will pull your image from DockerHub (same image
+# you built and pushed in Project 1) and run it as pods.
+# ============================================================
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: devops-app
+  labels:
+    app: devops-app
+
+spec:
+  replicas: 2   # Run 2 pods — if one crashes, the other keeps serving traffic
+
+  selector:
+    matchLabels:
+      app: devops-app   # Manage pods that have this label
+
+  template:
+    metadata:
+      labels:
+        app: devops-app   # Every pod gets this label
+
+    spec:
+      containers:
+        - name: devops-app
+          # ⚠️  Replace with YOUR DockerHub image name from Project 1
+          # Format: <your-dockerhub-username>/devops-app:latest
+          image: vigneshwari08/devops-app:latest
+
+          # Always pull the latest image when deploying
+          # This ensures the new image from CI is always used
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 80   # Port the Nginx inside the container listens on
+
+          # Resource limits — prevents one pod from using all server memory
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"     # 100 millicores = 0.1 of a CPU core
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
