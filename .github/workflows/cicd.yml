@@ -141,9 +141,14 @@ jobs:
           # Copy the k8s folder to the EC2 server
           ls -la k8s/   # List files to verify they exist before copying
 
-          scp -i ~/.ssh/devops-key.pem -r . ubuntu@$SERVER_IP:~/k8s/
-
           # SSH in and apply the manifests
+          echo "Creating k8s directory on server..."
+
+          ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP "mkdir -p ~/k8s"
+
+          echo "Copying files..."
+
+          scp -i ~/.ssh/devops-key.pem -r . ubuntu@$SERVER_IP:~/k8s/
           ssh -i ~/.ssh/devops-key.pem ubuntu@$SERVER_IP << 'ENDSSH'
             echo "Applying Kubernetes manifests..."
             kubectl apply -f ~/k8s/deployment.yaml
