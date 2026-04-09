@@ -164,3 +164,7 @@ This deletes the EC2 instance and security group — stops billing immediately.
 - Add Prometheus + Grafana monitoring
 - Add a rollback step to the pipeline
 - Use Helm charts instead of raw YAML
+
+---
+## Author
+Vigneshwari K
