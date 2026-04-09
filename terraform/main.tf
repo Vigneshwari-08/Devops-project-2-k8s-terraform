@@ -65,7 +65,7 @@ resource "aws_security_group" "devops_sg" {
   }
 
   tags = {
-    Name    = "devops-project-sg"
+    Name    = "devops-project2-sg"
     Project = "DevOps-Project"
   }
 }
@@ -118,7 +118,7 @@ resource "aws_instance" "devops_server" {
   EOF
 
   tags = {
-    Name    = "devops-project-server"
+    Name    = "devops-project2-server"
     Project = "DevOps-Project"
   }
 }
